@@ -1,0 +1,36 @@
+#!/bin/bash
+
+HOSTS_FILE="/etc/hosts"
+GITHUB_HOSTS_TEMP="/tmp/github-hosts.tmp"
+HOSTS_BACKUP="/etc/hosts.bak"
+GITHUB_MARKER_START="# GitHub520 Host Start"
+GITHUB_MARKER_END="# GitHub520 Host End"
+
+if [ ! -f "$HOSTS_BACKUP" ]; then
+  echo "Create a basic hosts backup ..."
+  sudo cp "$HOSTS_FILE" "$HOSTS_BACKUP"
+fi
+
+echo "Clean the old GitHub520 entries and restore the basic hosts file ..."
+sudo awk -v start="$GITHUB_MARKER_START" -v end="$GITHUB_MARKER_END" '
+    $0 ~ start { in_block=1 }
+    !in_block { print }
+    $0 ~ end { in_block=0 }
+' "$HOSTS_BACKUP" | sudo tee "$HOSTS_FILE" >/dev/null
+
+echo "Fetching the latest GitHub IP address ..."
+if sudo curl -L https://raw.hellogithub.com/hosts -o "$GITHUB_HOSTS_TEMP" --connect-timeout 10; then
+  echo "Successfully obtained the latest IP."
+  sudo sh -c "cat '$GITHUB_HOSTS_TEMP' >> '$HOSTS_FILE'"
+  sudo rm -f "$GITHUB_HOSTS_TEMP"
+else
+  echo "Error: Failed to download the GitHub520 list!"
+  exit 1
+fi
+
+echo "Refreshing the DNS cache ..."
+sudo systemctl restart systemd-resolved.service 2>/dev/null ||
+  sudo resolvectl flush-caches 2>/dev/null ||
+  echo "Note: If the DNS cache has not been refreshed, you may need to restart the network or the system."
+
+echo "The GitHub520 hosts update has been completed!"
